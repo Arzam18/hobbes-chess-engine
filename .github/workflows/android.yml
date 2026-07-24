@@ -31,17 +31,14 @@ jobs:
 
       - name: Download Network
         run: |
-          # Replicate the download-net target from the Makefile
           DEFAULT_NET=$(cat network.txt | tr -d '\r\n')
           echo "Downloading network $DEFAULT_NET..."
           curl -L -o hobbes.nnue "https://github.com/kelseyde/hobbes-networks/releases/download/${DEFAULT_NET}/${DEFAULT_NET}.nnue"
 
       - name: Build for Android
         run: |
-          # cargo-ndk handles the C-linker and sysroot automatically for Android
-          # -t arm64-v8a is the standard 64-bit Android target
-          # -p 24 sets the minimum API level to Android 7.0
-          cargo ndk -t arm64-v8a -p 24 build --release -p hobbes-chess-engine
+          # Changed -p 24 to --platform 24 to avoid conflicting with cargo's --package flag
+          cargo ndk -t arm64-v8a --platform 24 build --release -p hobbes-chess-engine
           
           mkdir -p dist/bin
           cp target/aarch64-linux-android/release/hobbes-chess-engine dist/bin/hobbes
