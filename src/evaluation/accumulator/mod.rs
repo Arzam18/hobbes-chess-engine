@@ -1,3 +1,4 @@
+use crate::board::file::File;
 use crate::board::observer::BoardObserver;
 use crate::board::piece::Piece;
 use crate::board::side::Side;
@@ -14,6 +15,11 @@ pub mod threat;
 pub struct Accumulator {
     pub psq: PieceSquareAccumulator,
     pub threat: ThreatAccumulator,
+}
+
+#[inline(always)]
+pub fn should_mirror(king_sq: Square) -> bool {
+    File::of(king_sq) > File::D
 }
 
 /// The Accumulator is passed in as a `BoardObserver` to `Board::make_move`, and the relevant updates
