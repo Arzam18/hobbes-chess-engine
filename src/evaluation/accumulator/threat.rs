@@ -285,9 +285,11 @@ impl ThreatAccumulator {
         others: Bitboard,
         add: bool,
     ) {
-        for b in others & PP_BANDS[sq] {
-            let side_b = if board.pawns(White).contains(b) { White } else { Black };
-            self.pawn_pair_fts.push(PawnPairFeature::new(sq, side, b, side_b, add));
+        let partners = others & PP_BANDS[sq];
+        for (side_b, pawns) in [(White, board.pawns(White)), (Black, board.pawns(Black))] {
+            for b in partners & pawns {
+                self.pawn_pair_fts.push(PawnPairFeature::new(sq, side, b, side_b, add));
+            }
         }
     }
 
