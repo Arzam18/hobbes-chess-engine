@@ -1,22 +1,23 @@
 use crate::board::attacks;
 use crate::board::bitboard::Bitboard;
-use crate::board::file::File;
 use crate::board::piece::Piece;
 use crate::board::rank::Rank;
 use crate::board::side::Side;
 use crate::board::side::Side::*;
 use crate::board::square::Square;
+use crate::evaluation::accumulator::should_mirror;
+use hobbes_nnue_arch::L0_PAWN_PAIR_FEATURES;
 
 /// This code computes the index of a given threat in the threat inputs accumulator. Everything here
 /// is heavily inspired by other engines, specifically Viridithas, Reckless, & Stormphrax. My only
 /// real contribution is comments to aid my own understanding.
 ///
-/// The total number of threat features encoded in the network is 60144.
+/// The total number of threat features encoded in the network is 59808.
 ///
-/// Why 60144? Naively, the total possible space of threat features is side * piece * square * side
+/// Why 59808? Naively, the total possible space of threat features is side * piece * square * side
 /// * piece * square = 2 * 6 * 64 * 2 * 6 * 64 = 589824 inputs. However, encoding the entire space
 /// would be prohibitively slow. Fortunately for us, many of these encodings are redundant, for
-/// reasons explained below. After deduplicating the redundant inputs, we arrive at a total of 60144.
+/// reasons explained below. After deduplicating the redundant inputs, we arrive at a total of 59808.
 
 /// This table tells us whether a given attacker/victim combination is included in the threat inputs.
 /// Some combinations are redundant: e.g., pawn-attacking-bishop is implied by pawn-attacking-pawn.
@@ -24,6 +25,7 @@ use crate::board::square::Square;
 ///
 /// All king-threats are fully excluded, in addition to the following list:
 ///
+/// - PAWN-attacking-PAWN (these are encoded separately, as part of the 'pawn pair' NNUE inputs)
 /// - PAWN-attacking-BISHOP
 /// - PAWN-attacking-ROOK
 /// - PAWN-attacking-QUEEN
@@ -37,18 +39,18 @@ use crate::board::square::Square;
 /// attacker's list of valid targets.
 #[rustfmt::skip]
 const PIECE_TARGET_MAP: [[i32; 6]; 6] = [
-    [ 0,  1, -1,  2, -1, -1], // pawn    -> P N R
-    [ 0,  1,  2,  3,  4, -1], // knight  -> P N B R Q
-    [ 0,  1,  2,  3, -1, -1], // bishop  -> P N B R
-    [ 0,  1,  2,  3, -1, -1], // rook    -> P N B R
-    [ 0,  1,  2,  3,  4, -1], // queen   -> P N B R Q
-    [-1, -1, -1, -1, -1, -1], // king    -> nothing
+    [ -1,  0, -1,  1, -1, -1], // pawn    -> N R
+    [ 0,  1,  2,  3,  4, -1],  // knight  -> P N B R Q
+    [ 0,  1,  2,  3, -1, -1],  // bishop  -> P N B R
+    [ 0,  1,  2,  3, -1, -1],  // rook    -> P N B R
+    [ 0,  1,  2,  3,  4, -1],  // queen   -> P N B R Q
+    [-1, -1, -1, -1, -1, -1],  // king    -> nothing
 ];
 
 /// For each attacker piece type, tell me how many valid victim types it has, counting each colour
 /// separately. This is essentially a pre-computed summary of the `PIECE_TARGET_MAP` table, with each
 /// entry multiplied by 2 to account for the two sides.
-const PIECE_TARGET_COUNT: [i32; 6] = [6, 10, 8, 8, 10, 0];
+const PIECE_TARGET_COUNT: [i32; 6] = [4, 10, 8, 8, 10, 0];
 
 /// Lookup table containing a tuple for each piece/side combination, containing (total pseudo-attacks,
 /// global pseudo-attack offset). The first value is simply how many squares that piece pseudo-attacks;
@@ -237,7 +239,7 @@ impl ThreatFeature {
             to = to.flip_rank();
         }
         // Threat indices are horizontally mirrored if the king is on the right side of the board.
-        if king_sq.file() >= File::E {
+        if should_mirror(king_sq) {
             from = from.flip_file();
             to = to.flip_file();
         }
@@ -258,7 +260,10 @@ impl ThreatFeature {
         // Get the number of squares the attacker threatens from `from` that are below `to`.
         let slot = unsafe { VICTIM_ORDINAL[attacker_idx][from][to] as i32 };
 
-        let index = (base as i32).wrapping_add(offset).wrapping_add(slot);
+        let index = (base as i32)
+            .wrapping_add(offset)
+            .wrapping_add(slot)
+            .wrapping_add(L0_PAWN_PAIR_FEATURES as i32);
 
         (base != u32::MAX, index)
     }
