@@ -2,10 +2,11 @@ name: Build Android
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ "*" ]
-  pull_request:
-    branches: [ "*" ]
+    inputs:
+      uci_date:
+        description: "UCI version/date (e.g. 20260918)"
+        required: true
+        default: "20260918"
 
 permissions:
   contents: write
@@ -34,6 +35,35 @@ jobs:
           DEFAULT_NET=$(cat network.txt | tr -d '\r\n')
           echo "Downloading network $DEFAULT_NET..."
           curl -L -o hobbes.nnue "https://github.com/kelseyde/hobbes-networks/releases/download/${DEFAULT_NET}/${DEFAULT_NET}.nnue"
+
+      - name: Set UCI Version
+        env:
+          UCI_DATE: ${{ inputs.uci_date }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          version = os.environ["UCI_DATE"]
+          found = False
+
+          for path in Path(".").rglob("*.rs"):
+              try:
+                  text = path.read_text()
+              except UnicodeDecodeError:
+                  continue
+
+              old = 'pub const VERSION: &str = "3.0";'
+              if old in text:
+                  new = f'pub const VERSION: &str = "{version}";'
+                  path.write_text(text.replace(old, new, 1))
+                  print(f"Patched version in {path}: {version}")
+                  found = True
+                  break
+
+          if not found:
+              raise SystemExit('Could not find: pub const VERSION: &str = "3.0";')
+          PY
 
       - name: Build for Android
         run: |
