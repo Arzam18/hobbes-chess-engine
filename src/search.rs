@@ -53,7 +53,7 @@ pub fn search(board: &Board, td: &mut ThreadData) -> (Move, i32) {
 
     match root_moves.len() {
         0 => return handle_no_legal_moves(board, td),
-        1 => return handle_one_legal_move(board, td, &root_moves),
+        1 if td.limits.search_moves.is_none() => return handle_one_legal_move(board, td, &root_moves),
         _ => {}
     }
 
@@ -536,6 +536,9 @@ fn alpha_beta<NODE: NodeType>(
     let mut captures = ArrayVec::<Move, 32>::new();
 
     while let Some(mv) = move_picker.next(board, td) {
+        if root_node && td.limits.search_moves.as_ref().is_some_and(|moves| !moves.contains(&mv)) {
+            continue;
+        }
 
         legal_moves += 1;
 
@@ -913,6 +916,11 @@ fn alpha_beta<NODE: NodeType>(
         && !singular_search
         && flag.bounds_match(best_score, static_eval, static_eval)
         && (!best_move.exists() || !board.is_noisy(&best_move) || !see::see(board, &best_move, 0, Pruning)) {
+
+        // Re-correct static eval using the updated correction histories.
+        correction = td.correction_history.correction(board, &td.stack, ply);
+        static_eval = raw_eval + correction;
+
         td.correction_history.update(board, &td.stack, depth, ply, static_eval, best_score);
     }
 
