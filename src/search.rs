@@ -279,7 +279,7 @@ fn alpha_beta<NODE: NodeType>(
                 Move::NONE,
                 score::MIN,
                 raw_eval,
-                depth,
+                0,
                 ply,
                 TTFlag::None,
                 tt_pv,
@@ -995,6 +995,7 @@ fn alpha_beta<NODE: NodeType>(
         for mv in captures.iter() {
             if mv != &best_move {
                 if let Some(captured) = board.captured(mv) {
+                    let pc = board.piece_at(mv.from()).unwrap();
                     td.history
                         .capture_history
                         .update(board.stm, pc, mv, captured, capt_malus);
