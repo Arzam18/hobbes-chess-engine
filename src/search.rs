@@ -87,7 +87,7 @@ pub fn search(board: &Board, td: &mut ThreadData) -> (Move, i32) {
             score = alpha_beta::<Root>(board, td, search_depth, 0, alpha, beta, false);
             bound = TTFlag::from_score(score, alpha, beta);
 
-            print_search_info(td, score.clamp(alpha, beta), bound, false);
+            print_search_info(td, board, score.clamp(alpha, beta), bound, false);
             td.update_tm_heuristics(prev_mv, prev_score, score);
 
             prev_mv = td.best_move;
@@ -129,7 +129,7 @@ pub fn search(board: &Board, td: &mut ThreadData) -> (Move, i32) {
     }
 
     // Print the final search stats
-    print_search_info(td, score.clamp(alpha, beta), bound, true);
+    print_search_info(td, board, score.clamp(alpha, beta), bound, true);
 
     (td.best_move, td.best_score)
 }
@@ -602,6 +602,7 @@ fn alpha_beta<NODE: NodeType>(
             - legal_moves * fp_movecount_mult()
             + history_score / fp_history_divisor()
             + is_killer as i32 * fp_killer()
+            + (static_eval >= beta) as i32 * fp_eval_beta()
             - (tt_hit && tt_flag == Upper) as i32 * fp_tt_upper();
         if !root_node
             && !in_check

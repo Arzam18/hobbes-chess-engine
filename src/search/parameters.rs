@@ -52,6 +52,7 @@ tunable_params! {
     fp_history_divisor           = 64, 64..=256,           true;
     fp_killer                    = 19, 0..=100,            true;
     fp_tt_upper                  = 25, 0..=100,            true;
+    fp_eval_beta                 = 75, 0..=150,            true;
     lmp_max_depth                = 8, 6..=10,              false;
     lmp_factor0_base             = 2497, 2000..=3000,      true;
     lmp_factor0_scale            = 132, 50..=200,          true;
@@ -212,12 +213,6 @@ tunable_params! {
     pcm_bonus_scale              = 219, 80..=300,          true;
     pcm_bonus_offset             = 77, 0..=200,            true;
     pcm_bonus_max                = 1383, 1000..=1600,      true;
-    qs_capt_hist_bonus_scale     = 249, 80..=360,          true;
-    qs_capt_hist_bonus_offset    = 3, 0..=200,             true;
-    qs_capt_hist_bonus_max       = 1435, 1000..=1600,      true;
-    qs_capt_hist_malus_scale     = 150, 80..=280,          true;
-    qs_capt_hist_malus_offset    = 93, 0..=200,            true;
-    qs_capt_hist_malus_max       = 1185, 1000..=1600,      true;
     corr_pawn_bonus_mult         = 219, 100..=300,         true;
     corr_pawn_bonus_div          = 87, 64..=256,           true;
     corr_pawn_bonus_min          = -4127, -6000..=-2000,   true;
