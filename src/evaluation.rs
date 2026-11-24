@@ -1,7 +1,7 @@
 mod accumulator;
 mod cache;
+mod inference;
 pub mod feature;
-mod forward;
 pub mod sparse;
 pub mod stats;
 
@@ -37,7 +37,6 @@ use crate::board::square::Square;
 use crate::board::{castling, Board};
 use crate::evaluation::accumulator::{should_mirror, Accumulator};
 use crate::evaluation::cache::InputBucketCache;
-use crate::evaluation::forward::{inference, Forward};
 use crate::search::parameters::{
     material_scaling_base, scale_value_bishop, scale_value_knight, scale_value_pawn,
     scale_value_queen, scale_value_rook,
@@ -92,7 +91,7 @@ impl NNUE {
         // Pass the features through the network to retrieve the raw eval.
         let raw = unsafe {
             inference::activate_l0(psq_us, threat_us, psq_them, threat_them, &mut l0_outputs);
-            #[cfg(feature = "track_l0_activations")]
+            #[cfg(feature = "track_activations")]
             sparse::track_activations(&l0_outputs);
             inference::propagate_l1(&l0_outputs, output_bucket, &mut l1_outputs);
             inference::propagate_l2(&l1_outputs, output_bucket, &mut l2_outputs);
