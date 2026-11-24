@@ -1,12 +1,13 @@
+
 name: Build Android
 
 on:
   workflow_dispatch:
     inputs:
       uci_date:
-        description: "UCI version/date (e.g. 20260912)"
+        description: "UCI version/date (YYYYMMDD)"
         required: true
-        default: "20260912"
+        default: "20261124"
 
 permissions:
   contents: write
@@ -32,54 +33,147 @@ jobs:
 
       - name: Download Network
         run: |
-          DEFAULT_NET=$(cat network.txt | tr -d '\r\n')
-          echo "Downloading network $DEFAULT_NET..."
-          curl -L -o hobbes.nnue "https://github.com/kelseyde/hobbes-networks/releases/download/${DEFAULT_NET}/${DEFAULT_NET}.nnue"
+          set -euo pipefail
+
+          DEFAULT_NET=$(tr -d '\r\n' < network.txt)
+
+          if [ -z "$DEFAULT_NET" ]; then
+            echo "::error::network.txt is empty"
+            exit 1
+          fi
+
+          echo "Downloading network: $DEFAULT_NET"
+
+          curl --fail --location --retry 3 \
+            --output hobbes.nnue \
+            "https://github.com/kelseyde/hobbes-networks/releases/download/${DEFAULT_NET}/${DEFAULT_NET}.nnue"
+
+          test -s hobbes.nnue
+          ls -lh hobbes.nnue
 
       - name: Set UCI Version
         env:
           UCI_DATE: ${{ inputs.uci_date }}
         run: |
+          set -euo pipefail
+
           python3 - <<'PY'
           import os
+          import re
           from pathlib import Path
 
           version = os.environ["UCI_DATE"]
-          found = False
+
+          if not re.fullmatch(r"\d{8}", version):
+              raise SystemExit(
+                  f"Invalid uci_date: {version!r}. Expected YYYYMMDD."
+              )
+
+          # Match Rust VERSION constants regardless of their current value
+          # or whether they use &str / &'static str.
+          pattern = re.compile(
+              r'(?m)^(\s*(?:pub(?:\([^)]*\))?\s+)?const\s+VERSION\s*:\s*&(?:\'static\s+)?str\s*=\s*)"[^"]*"(\s*;)'
+          )
+
+          matches = []
 
           for path in Path(".").rglob("*.rs"):
-              try:
-                  text = path.read_text()
-              except UnicodeDecodeError:
+              if any(part in {
+                  "target", ".git"
+              } for part in path.parts):
                   continue
 
-              old = 'pub const VERSION: &str = "3.0";'
-              if old in text:
-                  new = f'pub const VERSION: &str = "{version}";'
-                  path.write_text(text.replace(old, new, 1))
-                  print(f"Patched version in {path}: {version}")
-                  found = True
-                  break
+              try:
+                  content = path.read_text(encoding="utf-8")
+              except (UnicodeDecodeError, OSError):
+                  continue
 
-          if not found:
-              raise SystemExit('Could not find: pub const VERSION: &str = "3.0";')
+              for match in pattern.finditer(content):
+                  matches.append((path, content, match))
+
+          if not matches:
+              print("Could not locate a Rust VERSION string constant.")
+              print("Available VERSION declarations:")
+
+              for path in Path(".").rglob("*.rs"):
+                  if "target" in path.parts or ".git" in path.parts:
+                      continue
+                  try:
+                      for line_no, line in enumerate(
+                          path.read_text(encoding="utf-8").splitlines(), 1
+                      ):
+                          if "VERSION" in line:
+                              print(f"{path}:{line_no}: {line.strip()}")
+                  except (UnicodeDecodeError, OSError):
+                      pass
+
+              raise SystemExit(1)
+
+          if len(matches) != 1:
+              print("Found multiple VERSION constants:")
+              for path, _, match in matches:
+                  print(f"{path}: {match.group(0).strip()}")
+              raise SystemExit(
+                  "Refusing to patch an ambiguous VERSION constant."
+              )
+
+          path, content, match = matches[0]
+          old_line = match.group(0)
+          new_line = match.group(1) + f'"{version}"' + match.group(2)
+
+          updated = (
+              content[:match.start()]
+              + new_line
+              + content[match.end():]
+          )
+
+          path.write_text(updated, encoding="utf-8")
+
+          print(f"Updated Rust UCI version in {path}")
+          print(f"Old: {old_line.strip()}")
+          print(f"New: {new_line.strip()}")
           PY
 
       - name: Build for Android
         run: |
-          # Changed -p 24 to --platform 24 to avoid conflicting with cargo's --package flag
-          cargo ndk -t arm64-v8a --platform 24 build --release -p hobbes-chess-engine
-          
+          set -euo pipefail
+
+          cargo ndk \
+            -t arm64-v8a \
+            --platform 24 \
+            build --release \
+            -p hobbes-chess-engine
+
           mkdir -p dist/bin
-          cp target/aarch64-linux-android/release/hobbes-chess-engine dist/bin/hobbes
+
+          cp target/aarch64-linux-android/release/hobbes-chess-engine \
+             dist/bin/hobbes
+
+          test -s dist/bin/hobbes
 
       - name: Verify Binary
         run: |
+          set -euo pipefail
+
+          echo "Android ARM64 artifact:"
           ls -lh dist/bin/
-          file dist/bin/*
+
+          file dist/bin/hobbes
+
+          readelf -h dist/bin/hobbes
+
+          if ! readelf -h dist/bin/hobbes | grep -q "AArch64"; then
+            echo "::error::Binary is not AArch64"
+            exit 1
+          fi
+
+          if readelf -d dist/bin/hobbes | grep -q "libc++_shared.so"; then
+            echo "::warning::Binary depends on libc++_shared.so"
+          fi
 
       - name: Upload Android Artifact
         uses: actions/upload-artifact@v4
         with:
           name: hobbes-android-arm64
-          path: dist/bin/*
+          path: dist/bin/hobbes
+          if-no-files-found: error
